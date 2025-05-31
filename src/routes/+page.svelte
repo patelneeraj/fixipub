@@ -447,7 +447,9 @@
 		style="left: {menuX}px; top: {menuY}px;"
 	>
 		<ul class="menu bg-base-200 rounded-box w-56 border">
-			<li class="menu-title line-clamp-1 py-1">{contextedEpub?.metadata.title}</li>
+			<li class="menu-title line-clamp-1 py-1">
+				{contextedEpub?.metadata.title}
+			</li>
 			<li><button onclick={deleteItem}><Trash />Delete</button></li>
 		</ul>
 	</div>
@@ -499,45 +501,51 @@
 				/>
 			</label>
 		</div>
-		<div
-			class="grid h-full auto-rows-min grid-cols-2 gap-x-3 gap-y-10 overflow-auto p-3 sm:grid-cols-[repeat(auto-fit,_minmax(120px,_1fr))] sm:gap-x-4 sm:gap-y-5 sm:p-5 lg:grid-cols-[repeat(auto-fit,_minmax(175px,_1fr))]"
-		>
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			{#each filteredEpubList as epub}
-				<button
-					id="epubIcon_{epub.id}"
-					onclick={() => {
-						handleEpubSelect(epub);
-					}}
-					oncontextmenu={(e: MouseEvent) => {
-						handleRightClick(e, epub);
-					}}
-					class="flex h-[180px] w-full justify-center sm:h-[220px] lg:h-[250px]"
-				>
-					<div
-						class="flex aspect-[0.7/1] h-full flex-col overflow-hidden rounded-xl border lg:rounded-2xl {epub ==
-						selectedEpub
-							? 'border-primary border-2'
-							: 'border-gray-500'}"
+		{#if filteredEpubList.length == 0}
+			<div class=" flex h-full items-center justify-center text-gray-500">
+				<p>Add an EPUB to get started</p>
+			</div>
+		{:else}
+			<div
+				class="grid h-full auto-rows-min grid-cols-2 gap-x-3 gap-y-10 overflow-auto p-3 sm:grid-cols-[repeat(auto-fit,_minmax(120px,_1fr))] sm:gap-x-4 sm:gap-y-5 sm:p-5 lg:grid-cols-[repeat(auto-fit,_minmax(175px,_1fr))]"
+			>
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				{#each filteredEpubList as epub}
+					<button
+						id="epubIcon_{epub.id}"
+						onclick={() => {
+							handleEpubSelect(epub);
+						}}
+						oncontextmenu={(e: MouseEvent) => {
+							handleRightClick(e, epub);
+						}}
+						class="flex h-[180px] w-full justify-center sm:h-[220px] lg:h-[250px]"
 					>
-						<div class="flex-1 overflow-hidden">
-							<img
-								src={getCoverUrlFromBlob(epub.coverBlob)}
-								alt="No Cover"
-								class="h-full w-full object-fill"
-							/>
-						</div>
 						<div
-							class="flex h-[2rem] flex-col justify-center overflow-hidden px-1 text-center text-xs font-medium sm:h-[2.4rem] sm:px-2 sm:text-sm"
+							class="flex aspect-[0.7/1] h-full flex-col overflow-hidden rounded-xl border lg:rounded-2xl {epub ==
+							selectedEpub
+								? 'border-primary border-2'
+								: 'border-gray-500'}"
 						>
-							<div class="line-clamp-2 leading-[1rem] sm:leading-[1.2rem]">
-								{epub.metadata.title}
+							<div class="flex-1 overflow-hidden">
+								<img
+									src={getCoverUrlFromBlob(epub.coverBlob)}
+									alt="No Cover"
+									class="h-full w-full object-fill"
+								/>
+							</div>
+							<div
+								class="flex h-[2rem] flex-col justify-center overflow-hidden px-1 text-center text-xs font-medium sm:h-[2.4rem] sm:px-2 sm:text-sm"
+							>
+								<div class="line-clamp-2 leading-[1rem] sm:leading-[1.2rem]">
+									{epub.metadata.title}
+								</div>
 							</div>
 						</div>
-					</div>
-				</button>
-			{/each}
-		</div>
+					</button>
+				{/each}
+			</div>
+		{/if}
 	</div>
 
 	<!-- Divider (hidden on mobile) -->
@@ -547,8 +555,8 @@
 	<div class="h-full w-full lg:w-2/3 {showMetadata ? 'flex flex-col' : 'hidden lg:block'}">
 		{#if selectedEpub}
 			<!-- Mobile back button -->
-			<div class="bg-base-100 flex items-center border-b p-3 lg:hidden">
-				<button onclick={goBackToList} class="btn btn-ghost btn-sm">
+			<div class="bg-base-100 flex w-full items-center border-b lg:hidden">
+				<button onclick={goBackToList} class="btn btn-ghost btn-sm w-full justify-start text-left">
 					<ArrowLeft class="h-4 w-4" /> Back to Library
 				</button>
 			</div>
