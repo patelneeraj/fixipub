@@ -13,15 +13,15 @@
 		await loadStoredEpubs();
 	});
 
-	function updateQuery(key: string, value: string) {
+	function updateSelectedEpub(value: string) {
 		const url = new URL(page.url);
-		url.searchParams.set(key, value);
+		url.searchParams.set('id', value);
 		goto(url.toString());
 	}
 
-	function removeQuery(key: string) {
+	function removeSelectedEpub() {
 		const url = new URL(page.url);
-		url.searchParams.delete(key);
+		url.searchParams.delete('id');
 		goto(url.toString());
 	}
 
@@ -95,11 +95,11 @@
 	}
 
 	function handleEpubSelect(epub: StoredEpub) {
-		updateQuery('id', epub.id?.toString()!);
+		updateSelectedEpub(epub.id?.toString()!);
 	}
 
 	function goBackToList() {
-		removeQuery('id');
+		removeSelectedEpub();
 	}
 
 	let filteredEpubList = $derived(
@@ -199,7 +199,7 @@
 			newEpub.id = addedEpubId;
 
 			epubList.push(newEpub);
-			updateQuery('id', addedEpubId);
+			updateSelectedEpub(addedEpubId);
 		} catch (err) {
 			error = `Error reading EPUB: ${err instanceof Error ? err.message : 'Unknown error'}`;
 			console.error(err);
