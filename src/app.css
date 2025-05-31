@@ -2,12 +2,14 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/forms';
 @plugin '@tailwindcss/typography';
+
 @plugin "daisyui" {
 	themes:
 		light --default,
 		dark --prefersdark,
 		halloween;
 }
+
 @theme {
 	--font-inter: 'Inter', sans-serif;
 }
@@ -16,4 +18,8 @@ html,
 body {
 	height: 100%;
 	width: 100%;
+}
+
+html {
+	scrollbar-gutter: stable;
 }
