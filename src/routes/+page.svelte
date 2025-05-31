@@ -4,11 +4,25 @@
 	import { CirclePlus, Trash, ArrowLeft } from '@lucide/svelte';
 	import FileDropzone from '$lib/components/FileDropzone.svelte';
 	import DisplayMetadata from '$lib/components/DisplayMetadata.svelte';
+	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
+	import { onMount } from 'svelte';
+	import { add } from 'dexie';
 
-	interface EpubFile {
-		name: string;
-		isFolder: boolean;
-		size: number;
+	onMount(async () => {
+		await loadStoredEpubs();
+	});
+
+	function updateQuery(key: string, value: string) {
+		const url = new URL(page.url);
+		url.searchParams.set(key, value);
+		goto(url.toString());
+	}
+
+	function removeQuery(key: string) {
+		const url = new URL(page.url);
+		url.searchParams.delete(key);
+		goto(url.toString());
 	}
 
 	let showContextMenu = $state(false);
@@ -16,7 +30,17 @@
 	let menuY = $state(0);
 
 	let contextedEpub = $state<StoredEpub>();
-	let selectedEpub = $state<StoredEpub>();
+
+	let selectedEpub = $derived.by(() => {
+		let id = page.url.searchParams.get('id');
+		if (id) {
+			return epubList.find((epub) => {
+				return epub.id?.toString() === id;
+			});
+		} else {
+			return undefined;
+		}
+	});
 
 	let loading: boolean = $state(false);
 	let error: string | null = $state(null);
@@ -26,7 +50,13 @@
 	let contextMenuElement: HTMLElement | null = $state(null);
 
 	// Mobile view state
-	let showMetadata = $state(false);
+	let showMetadata = $derived.by(() => {
+		if (selectedEpub) {
+			return true;
+		} else {
+			return false;
+		}
+	});
 
 	function handleDocumentClick(e: MouseEvent) {
 		if (showContextMenu) {
@@ -65,13 +95,11 @@
 	}
 
 	function handleEpubSelect(epub: StoredEpub) {
-		selectedEpub = epub;
-		showMetadata = true;
+		updateQuery('id', epub.id?.toString()!);
 	}
 
 	function goBackToList() {
-		showMetadata = false;
-		selectedEpub = undefined;
+		removeQuery('id');
 	}
 
 	let filteredEpubList = $derived(
@@ -89,11 +117,12 @@
 	async function loadStoredEpubs() {
 		epubList = await db.epubs.toArray();
 	}
-	loadStoredEpubs();
 
 	async function deleteStoredEpub(id: number) {
 		await db.epubs.delete(id);
-		loadStoredEpubs();
+		epubList = epubList.filter((epub) => {
+			return epub.id !== id;
+		});
 	}
 
 	function getCoverUrlFromBlob(blob: Blob | null): string | null {
@@ -158,14 +187,19 @@
 			let metadata = parseOpfMetadata(opfData, opfPath);
 			const coverBlob = metadata.coverPath ? await getCoverBlob(zip, metadata.coverPath) : null;
 
-			await db.epubs.add({
+			let newEpub: StoredEpub = {
 				name: file.name,
 				data: file,
 				coverBlob,
 				metadata,
 				createdAt: new Date()
-			});
-			await loadStoredEpubs();
+			};
+
+			let addedEpubId = await db.epubs.add(newEpub);
+			newEpub.id = addedEpubId;
+
+			epubList.push(newEpub);
+			updateQuery('id', addedEpubId);
 		} catch (err) {
 			error = `Error reading EPUB: ${err instanceof Error ? err.message : 'Unknown error'}`;
 			console.error(err);
