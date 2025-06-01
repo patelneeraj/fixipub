@@ -6,7 +6,7 @@
 	import DisplayMetadata from '$lib/components/DisplayMetadata.svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { add } from 'dexie';
 
 	onMount(async () => {
@@ -49,22 +49,29 @@
 	let fileInputDialog: HTMLDialogElement | null = $state(null);
 	let contextMenuElement: HTMLElement | null = $state(null);
 
+	function changeToHtmlExtension(filename: string) {
+		return filename.replace(/\.[^/.]+$/, '') + '.html';
+	}
+
 	const shareBook = async () => {
-		const file = new File([contextedEpub?.data!], contextedEpub?.name!, {
-			type: 'application/epub+zip'
-		});
+		showContextMenu = false;
+		const file = new File(
+			[contextedEpub?.data!],
+			changeToHtmlExtension(contextedEpub?.metadata.title!),
+			{
+				type: 'text/html'
+			}
+		);
 
 		try {
 			if (navigator.canShare({ files: [file] })) {
-				alert('File be attempted to be shared now!');
 				await navigator.share({
-					title: file.name,
-					files: [file]
+					title: `Share ${contextedEpub?.metadata.title} to Kindle`,
+					files: [file],
+					text: 'Open with Kindle app to read this book!'
 				});
 			}
-		} catch (error) {
-			alert(error);
-		}
+		} catch (error) {}
 	};
 
 	// Mobile view state
@@ -93,10 +100,30 @@
 
 	function handleRightClick(e: MouseEvent, epub: StoredEpub) {
 		e.preventDefault();
-		menuX = e.clientX;
-		menuY = e.clientY;
-		showContextMenu = true;
+
 		contextedEpub = epub;
+		showContextMenu = true;
+
+		// Let the menu render, then adjust position
+		tick().then(() => {
+			if (!contextMenuElement) return;
+
+			const menuRect = contextMenuElement.getBoundingClientRect();
+			const viewportWidth = window.innerWidth;
+			const viewportHeight = window.innerHeight;
+			let x = e.clientX;
+			let y = e.clientY;
+
+			if (x + menuRect.width > viewportWidth) {
+				x = viewportWidth - menuRect.width - 10;
+			}
+			if (y + menuRect.height > viewportHeight) {
+				y = viewportHeight - menuRect.height - 10;
+			}
+
+			menuX = Math.max(0, x);
+			menuY = Math.max(0, y);
+		});
 	}
 
 	function deleteItem() {
@@ -543,13 +570,15 @@
 				>
 			</li>
 
-			<li>
-				<button
-					onclick={() => {
-						shareBook();
-					}}><Share2 /> Share</button
-				>
-			</li>
+			{#if typeof navigator.share === 'function' && typeof navigator.canShare === 'function'}
+				<li>
+					<button
+						onclick={() => {
+							shareBook();
+						}}><Share2 /> Share(Will Work For Kindle App Only)</button
+					>
+				</li>
+			{/if}
 		</ul>
 	</div>
 {/if}

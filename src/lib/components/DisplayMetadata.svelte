@@ -25,6 +25,12 @@
 	let newCoverFile = $state<File | null>(null);
 	let coverFileInput = $state<HTMLInputElement>();
 
+	// Image resizing controls
+	let showResizeControls = $state(false);
+	let resizeWidth = $state(1200);
+	let resizeHeight = $state(1600);
+	let isResizing = $state(false);
+
 	// Initialize cover URL once and memoize it
 	let currentCoverBlob = $state<Blob | null>(null);
 
@@ -72,6 +78,55 @@
 		return `${mb.toFixed(2)} MB`;
 	}
 
+	// Cover resizing function
+	async function resizeCoverImage(
+		file: File | Blob,
+		targetWidth: number,
+		targetHeight: number
+	): Promise<Blob> {
+		return new Promise((resolve, reject) => {
+			const img = new Image();
+			const canvas = document.createElement('canvas');
+			const ctx = canvas.getContext('2d');
+
+			if (!ctx) {
+				reject(new Error('Could not get canvas context'));
+				return;
+			}
+
+			img.onload = () => {
+				// Set canvas dimensions to target size
+				canvas.width = targetWidth;
+				canvas.height = targetHeight;
+
+				// Stretch/compress the image to fit exactly the target dimensions
+				// This will change the aspect ratio to match the target dimensions
+				ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+
+				// Convert canvas to blob
+				canvas.toBlob(
+					(blob) => {
+						if (blob) {
+							resolve(blob);
+						} else {
+							reject(new Error('Failed to create blob from canvas'));
+						}
+					},
+					'image/jpeg',
+					0.9
+				); // High quality JPEG
+			};
+
+			img.onerror = () => {
+				reject(new Error('Failed to load image'));
+			};
+
+			// Create object URL and load the image
+			const objectUrl = URL.createObjectURL(file);
+			img.src = objectUrl;
+		});
+	}
+
 	// Initialize edit form
 	function startEdit() {
 		editedMetadata = {
@@ -84,6 +139,7 @@
 			identifiers: { ...(epub.metadata.identifiers || {}) }
 		};
 		newCoverFile = null;
+		showResizeControls = false;
 		isEditing = true;
 	}
 
@@ -91,6 +147,7 @@
 	function cancelEdit() {
 		isEditing = false;
 		newCoverFile = null;
+		showResizeControls = false;
 		editedMetadata = {
 			title: '',
 			author: '',
@@ -103,11 +160,44 @@
 	}
 
 	// Handle cover file selection
-	function handleCoverChange(event: Event) {
+	async function handleCoverChange(event: Event) {
 		const target = event.target as HTMLInputElement;
 		const file = target.files?.[0];
+
 		if (file && file.type.startsWith('image/')) {
 			newCoverFile = file;
+			showResizeControls = true; // Show resize controls when a new image is selected
+		}
+	}
+
+	// Show resize controls for existing cover
+	function showResizeControlsForExisting() {
+		if (epub.coverBlob || newCoverFile) {
+			showResizeControls = true;
+		}
+	}
+
+	// Handle manual resize
+	async function handleResize() {
+		const imageToResize = newCoverFile || epub.coverBlob;
+		if (!imageToResize) return;
+
+		try {
+			isResizing = true;
+			// Resize the image to the specified dimensions
+			const resizedBlob = await resizeCoverImage(imageToResize, resizeWidth, resizeHeight);
+
+			// Create a new File object from the resized blob
+			newCoverFile = new File([resizedBlob], newCoverFile?.name || 'cover.jpg', {
+				type: 'image/jpeg',
+				lastModified: Date.now()
+			});
+
+			showResizeControls = false; // Hide controls after resizing
+		} catch (error) {
+			console.error('Error resizing cover image:', error);
+		} finally {
+			isResizing = false;
 		}
 	}
 
@@ -143,10 +233,12 @@
 
 			isEditing = false;
 			newCoverFile = null;
+			showResizeControls = false;
 		} catch (error: any) {
 			console.error('Error saving changes:', error);
 		}
 	}
+
 	// Subject management
 	function addSubject() {
 		editedMetadata.subjects = [...editedMetadata.subjects, ''];
@@ -243,8 +335,8 @@
 				<div class="mx-auto flex-shrink-0 lg:mx-0">
 					<div class="relative">
 						{#if coverUrl || newCoverFile}
-							<div class="avatar">
-								<div class="h-48 w-32 rounded-lg shadow-lg sm:h-60 sm:w-40 lg:h-72 lg:w-48">
+							<div class="">
+								<div class="h-48 max-w-64 min-w-24 rounded-lg shadow-lg sm:h-60 lg:h-72">
 									<img
 										src={newCoverFile ? URL.createObjectURL(newCoverFile) : coverUrl}
 										alt="Book cover for {epub.metadata.title}"
@@ -287,9 +379,99 @@
 							</div>
 						{/if}
 					</div>
-					{#if isEditing && newCoverFile}
-						<div class="mt-2 text-center">
-							<span class="text-success text-xs">New cover selected: {newCoverFile.name}</span>
+
+					<!-- Cover controls and resize options -->
+					{#if isEditing}
+						<div class="mt-3 space-y-3">
+							<!-- Cover file info -->
+							{#if newCoverFile}
+								<div class="text-center">
+									<span class="text-success block text-xs">Cover selected: {newCoverFile.name}</span
+									>
+									<span class="text-info text-xs">Size: {sizeFormatter(newCoverFile.size)}</span>
+								</div>
+							{/if}
+
+							<!-- Show resize button for existing or new cover -->
+							{#if (epub.coverBlob || newCoverFile) && !showResizeControls}
+								<div class="text-center">
+									<button class="btn btn-outline btn-sm" onclick={showResizeControlsForExisting}>
+										<svg class="mr-1 h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+											<path
+												fill-rule="evenodd"
+												d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
+												clip-rule="evenodd"
+											/>
+										</svg>
+										Resize Cover
+									</button>
+								</div>
+							{/if}
+
+							<!-- Resize Controls -->
+							{#if showResizeControls}
+								<div class="bg-base-200 space-y-3 rounded-lg p-3">
+									<div class="text-center">
+										<span class="text-sm font-medium">Resize Cover</span>
+									</div>
+									<div class="flex gap-2">
+										<div class="flex-1">
+											<!-- svelte-ignore a11y_label_has_associated_control -->
+											<label class="label py-1">
+												<span class="label-text text-xs">Width</span>
+											</label>
+											<input
+												type="number"
+												bind:value={resizeWidth}
+												class="input input-bordered input-sm w-full"
+												min="100"
+												max="4000"
+											/>
+										</div>
+										<div class="flex-1">
+											<!-- svelte-ignore a11y_label_has_associated_control -->
+											<label class="label py-1">
+												<span class="label-text text-xs">Height</span>
+											</label>
+											<input
+												type="number"
+												bind:value={resizeHeight}
+												class="input input-bordered input-sm w-full"
+												min="100"
+												max="4000"
+											/>
+										</div>
+									</div>
+									<div class="flex gap-2">
+										<button
+											class="btn btn-primary btn-sm flex-1"
+											class:loading={isResizing}
+											onclick={handleResize}
+											disabled={isResizing}
+										>
+											{#if isResizing}
+												Resizing...
+											{:else}
+												<svg class="mr-1 h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+													<path
+														fill-rule="evenodd"
+														d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
+														clip-rule="evenodd"
+													/>
+												</svg>
+												Resize
+											{/if}
+										</button>
+										<button
+											class="btn btn-ghost btn-sm"
+											onclick={() => (showResizeControls = false)}
+											disabled={isResizing}
+										>
+											Cancel
+										</button>
+									</div>
+								</div>
+							{/if}
 						</div>
 					{/if}
 				</div>
