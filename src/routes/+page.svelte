@@ -1,7 +1,7 @@
 <script lang="ts">
 	import JSZip from 'jszip';
 	import { db, type EpubMetadata, type StoredEpub } from '$lib/db';
-	import { CirclePlus, Trash, ArrowLeft, Download } from '@lucide/svelte';
+	import { CirclePlus, Trash, ArrowLeft, Download, Share, Share2 } from '@lucide/svelte';
 	import FileDropzone from '$lib/components/FileDropzone.svelte';
 	import DisplayMetadata from '$lib/components/DisplayMetadata.svelte';
 	import { page } from '$app/state';
@@ -48,6 +48,23 @@
 	let filter: string = $state('');
 	let fileInputDialog: HTMLDialogElement | null = $state(null);
 	let contextMenuElement: HTMLElement | null = $state(null);
+
+	const shareBook = async () => {
+		const file = new File([selectedEpub?.data!], selectedEpub?.name!, {
+			type: 'application/epub+zip'
+		});
+
+		try {
+			if (navigator.canShare({ files: [file] })) {
+				await navigator.share({
+					title: 'Share EPUB Book',
+					files: [file]
+				});
+			}
+		} catch (error) {
+			alert(error);
+		}
+	};
 
 	// Mobile view state
 	let showMetadata = $derived.by(() => {
@@ -522,6 +539,13 @@
 					onclick={() => {
 						handleDownload(contextedEpub?.data!, contextedEpub?.name!);
 					}}><Download /> Download</button
+				>
+			</li>
+			<li>
+				<button
+					onclick={() => {
+						shareBook();
+					}}><Share2 /> Share</button
 				>
 			</li>
 		</ul>
