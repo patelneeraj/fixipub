@@ -1,7 +1,7 @@
 <script lang="ts">
 	import JSZip from 'jszip';
 	import { db, type EpubMetadata, type StoredEpub } from '$lib/db';
-	import { CirclePlus, Trash, ArrowLeft } from '@lucide/svelte';
+	import { CirclePlus, Trash, ArrowLeft, Download } from '@lucide/svelte';
 	import FileDropzone from '$lib/components/FileDropzone.svelte';
 	import DisplayMetadata from '$lib/components/DisplayMetadata.svelte';
 	import { page } from '$app/state';
@@ -145,70 +145,68 @@
 	async function handleFileSelect(files: File[]): Promise<void> {
 		closeDialog();
 		const parser = new DOMParser();
-		const file = files?.[0];
-		if (!file) return;
+		files.forEach(async (file) => {
+			if (!file) return;
 
-		if (!file.name.toLowerCase().endsWith('.epub')) {
-			error = 'Please select an EPUB file';
-			return;
-		}
-
-		loading = true;
-		error = null;
-		files = [];
-
-		try {
-			const zip = await JSZip.loadAsync(file);
-
-			let mimetypeFile = zip.files['mimetype'];
-
-			let mimetype = await mimetypeFile.async('text');
-
-			if (mimetype !== 'application/epub+zip') {
-				throw new Error('Invalid Epub File');
+			if (!file.name.toLowerCase().endsWith('.epub')) {
+				error = 'Please select an EPUB file';
+				return;
 			}
 
-			let containerFile = zip.files['META-INF/container.xml'];
+			try {
+				const zip = await JSZip.loadAsync(file);
 
-			let containerFileText = await containerFile.async('text');
+				let mimetypeFile = zip.files['mimetype'];
 
-			const parsedCF = parser.parseFromString(containerFileText, 'application/xml');
+				let mimetype = await mimetypeFile.async('text');
 
-			const ns = 'urn:oasis:names:tc:opendocument:xmlns:container';
-			const rootfileElement = parsedCF.getElementsByTagNameNS(ns, 'rootfile')[0];
-			const opfPath = rootfileElement.getAttribute('full-path');
-			if (!opfPath) {
-				throw new Error('Invalid Epub file!');
+				if (mimetype.trim() !== 'application/epub+zip') {
+					throw new Error('Invalid Epub File');
+				}
+
+				let containerFile = zip.files['META-INF/container.xml'];
+
+				let containerFileText = await containerFile.async('text');
+
+				const parsedCF = parser.parseFromString(containerFileText, 'application/xml');
+
+				const ns = 'urn:oasis:names:tc:opendocument:xmlns:container';
+				const rootfileElement = parsedCF.getElementsByTagNameNS(ns, 'rootfile')[0];
+				const opfPath = rootfileElement.getAttribute('full-path');
+				if (!opfPath) {
+					throw new Error('Invalid Epub file!');
+				}
+
+				let opfFile = zip.files[opfPath];
+				let opfData = await opfFile.async('text');
+
+				let metadata = parseOpfMetadata(opfData, opfPath, zip);
+				const coverBlob = metadata.coverPath ? await getCoverBlob(zip, metadata.coverPath) : null;
+
+				let newEpub: StoredEpub = {
+					name: file.name,
+					data: file,
+					coverBlob,
+					metadata,
+					createdAt: new Date()
+				};
+
+				let addedEpubId = await db.epubs.add(newEpub);
+				newEpub.id = addedEpubId;
+
+				epubList.push(newEpub);
+				//updateSelectedEpub(addedEpubId);
+			} catch (err) {
+				console.error(err);
 			}
-
-			let opfFile = zip.files[opfPath];
-			let opfData = await opfFile.async('text');
-
-			let metadata = parseOpfMetadata(opfData, opfPath);
-			const coverBlob = metadata.coverPath ? await getCoverBlob(zip, metadata.coverPath) : null;
-
-			let newEpub: StoredEpub = {
-				name: file.name,
-				data: file,
-				coverBlob,
-				metadata,
-				createdAt: new Date()
-			};
-
-			let addedEpubId = await db.epubs.add(newEpub);
-			newEpub.id = addedEpubId;
-
-			epubList.push(newEpub);
-			updateSelectedEpub(addedEpubId);
-		} catch (err) {
-			error = `Error reading EPUB: ${err instanceof Error ? err.message : 'Unknown error'}`;
-			console.error(err);
-		} finally {
-			loading = false;
-		}
+		});
 	}
 
-	export function parseOpfMetadata(opfXmlString: string, opfFilePath: string): EpubMetadata {
+	export function parseOpfMetadata(
+		opfXmlString: string,
+		opfFilePath: string,
+		zip: JSZip
+	): EpubMetadata {
 		const parser = new DOMParser();
 		const xmlDoc = parser.parseFromString(opfXmlString, 'application/xml');
 
@@ -394,7 +392,14 @@
 		}
 
 		function getCover(): string | null {
-			// First, find the meta tag with name="cover" and get its content
+			const nsResolver = (prefix: string | null): string | null => {
+				if (prefix === 'opf') return 'http://www.idpf.org/2007/opf';
+				return null;
+			};
+
+			const opfDir = opfFilePath.substring(0, opfFilePath.lastIndexOf('/'));
+
+			// Try to get the cover ID from metadata
 			const coverMetaResult = xmlDoc.evaluate(
 				'//opf:metadata/opf:meta[@name="cover"]/@content',
 				xmlDoc,
@@ -404,33 +409,47 @@
 			);
 
 			const coverId = coverMetaResult.stringValue.trim();
-			if (!coverId) {
-				return null;
+
+			let coverHref = '';
+
+			if (coverId) {
+				const manifestItemResult = xmlDoc.evaluate(
+					`//opf:manifest/opf:item[@id="${coverId}"]/@href`,
+					xmlDoc,
+					nsResolver,
+					XPathResult.STRING_TYPE,
+					null
+				);
+				coverHref = manifestItemResult.stringValue.trim();
+
+				if (coverHref) {
+					// Always resolve relative to OPF dir
+					coverHref = normalizePath(opfDir + '/' + coverHref);
+					if (zip.files[coverHref]) {
+						return coverHref;
+					}
+				}
 			}
 
-			// Then, find the manifest item with that id and get its href
-			const manifestItemResult = xmlDoc.evaluate(
-				`//opf:manifest/opf:item[@id="${coverId}"]/@href`,
-				xmlDoc,
-				nsResolver,
-				XPathResult.STRING_TYPE,
-				null
-			);
+			// Fallback: search all files for a likely cover image
+			const candidates = Object.keys(zip.files).filter((filename) => {
+				const name = filename.toLowerCase();
+				return /(^|\/)cover\.(jpe?g|png|gif|svg)$/.test(name);
+			});
 
-			const coverHref = manifestItemResult.stringValue.trim();
-			if (!coverHref) {
-				return null;
+			for (const candidate of candidates) {
+				// Check if candidate is in same folder or a subfolder of OPF dir
+				const resolved = normalizePath(candidate);
+				if (resolved.startsWith(opfDir)) {
+					return resolved;
+				}
 			}
 
-			// Resolve relative path to absolute path
-			// Get the directory containing the OPF file
-			const opfDir = opfFilePath.substring(0, opfFilePath.lastIndexOf('/'));
+			if (zip.file(opfDir + '/' + coverId)) {
+				return opfDir + '/' + coverId;
+			}
 
-			// Join the OPF directory with the cover href
-			const absoluteCoverPath = opfDir + '/' + coverHref;
-
-			// Normalize the path (handle .. and . segments)
-			return normalizePath(absoluteCoverPath);
+			return null;
 		}
 
 		function normalizePath(path: string): string {
@@ -470,6 +489,19 @@
 			coverPath
 		};
 	}
+
+	function handleDownload(blob: Blob, filename: string) {
+		if (blob) {
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = filename;
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+			URL.revokeObjectURL(url);
+		}
+	}
 </script>
 
 <svelte:document on:click={handleDocumentClick} on:keydown={handleEscape} />
@@ -485,6 +517,13 @@
 				{contextedEpub?.metadata.title}
 			</li>
 			<li><button onclick={deleteItem}><Trash />Delete</button></li>
+			<li>
+				<button
+					onclick={() => {
+						handleDownload(contextedEpub?.data!, contextedEpub?.name!);
+					}}><Download /> Download</button
+				>
+			</li>
 		</ul>
 	</div>
 {/if}
@@ -496,7 +535,7 @@
 			<button class="btn btn-sm btn-circle btn-ghost absolute top-2 right-2">✕</button>
 		</form>
 		<div class="dialog-body p-5">
-			<FileDropzone accept=".epub" multiple={false} onFileSelect={handleFileSelect} />
+			<FileDropzone accept=".epub" multiple={true} onFileSelect={handleFileSelect} />
 		</div>
 	</div>
 </dialog>
@@ -562,12 +601,29 @@
 								: 'border-gray-500'}"
 						>
 							<div class="flex-1 overflow-hidden">
-								<img
-									src={getCoverUrlFromBlob(epub.coverBlob)}
-									alt="No Cover"
-									class="h-full w-full object-fill"
-								/>
+								{#if epub.coverBlob}
+									<img
+										src={getCoverUrlFromBlob(epub.coverBlob)}
+										alt="No Cover"
+										class="h-full w-full object-fill"
+									/>
+								{:else}
+									<div
+										class="bg-base-200 flex h-full w-full items-center justify-center rounded-lg shadow-lg"
+									>
+										<svg
+											class="text-base-content/30 h-12 w-12"
+											fill="currentColor"
+											viewBox="0 0 20 20"
+										>
+											<path
+												d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z"
+											/>
+										</svg>
+									</div>
+								{/if}
 							</div>
+
 							<div
 								class="flex h-[2rem] flex-col justify-center overflow-hidden px-1 text-center text-xs font-medium sm:h-[2.4rem] sm:px-2 sm:text-sm"
 							>
@@ -595,7 +651,7 @@
 				</button>
 			</div>
 			<div class="flex-1 overflow-auto">
-				<DisplayMetadata epub={selectedEpub}></DisplayMetadata>
+				<DisplayMetadata bind:epub={selectedEpub}></DisplayMetadata>
 			</div>
 		{:else if !showMetadata}
 			<div class="hidden h-full items-center justify-center text-gray-500 lg:flex">
