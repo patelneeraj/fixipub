@@ -340,7 +340,7 @@
 									<img
 										src={newCoverFile ? URL.createObjectURL(newCoverFile) : coverUrl}
 										alt="Book cover for {epub.metadata.title}"
-										class="h-full w-full rounded-lg object-cover"
+										class="h-full rounded-lg object-cover"
 									/>
 								</div>
 							</div>
@@ -470,8 +470,7 @@
 											Cancel
 										</button>
 									</div>
-								</div>
-							{/if}
+								</div>{/if}
 						</div>
 					{/if}
 				</div>
