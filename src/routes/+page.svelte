@@ -50,14 +50,15 @@
 	let contextMenuElement: HTMLElement | null = $state(null);
 
 	const shareBook = async () => {
-		const file = new File([selectedEpub?.data!], selectedEpub?.name!, {
+		const file = new File([contextedEpub?.data!], contextedEpub?.name!, {
 			type: 'application/epub+zip'
 		});
 
 		try {
 			if (navigator.canShare({ files: [file] })) {
+				alert('File be attempted to be shared now!');
 				await navigator.share({
-					title: 'Share EPUB Book',
+					title: file.name,
 					files: [file]
 				});
 			}
@@ -541,6 +542,7 @@
 					}}><Download /> Download</button
 				>
 			</li>
+
 			<li>
 				<button
 					onclick={() => {
