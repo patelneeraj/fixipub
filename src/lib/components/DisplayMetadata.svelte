@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { db, type EpubMetadata, type StoredEpub } from '$lib/db';
-	import { updateEpubInDatabase } from '$lib/rebuild';
+	import { rebuildEpubWithMetadata, updateEpubInDatabase } from '$lib/rebuild';
 
 	interface Props {
 		epub: StoredEpub;
@@ -226,10 +226,12 @@
 			// Save to Dexie
 			await db.epubs.put(updatedEpub);
 			await updateEpubInDatabase(db, updatedEpub);
+			const newEpubBlob = (await db.epubs.get(updatedEpub.id))?.data;
 
-			// Update local epub object
+			//Update local epub object
 			epub.coverBlob = updatedEpub.coverBlob;
 			epub.metadata = updatedEpub.metadata;
+			epub.data = newEpubBlob!;
 
 			isEditing = false;
 			newCoverFile = null;

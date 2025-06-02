@@ -565,7 +565,7 @@
 			<li>
 				<button
 					onclick={() => {
-						handleDownload(contextedEpub?.data!, contextedEpub?.name!);
+						handleDownload(contextedEpub?.data!, contextedEpub?.metadata.title!);
 					}}><Download /> Download</button
 				>
 			</li>
