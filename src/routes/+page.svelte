@@ -1,13 +1,15 @@
 <script lang="ts">
 	import JSZip from 'jszip';
 	import { db, type EpubMetadata, type StoredEpub } from '$lib/db';
-	import { CirclePlus, Trash, ArrowLeft, Download, Share, Share2 } from '@lucide/svelte';
+	import { CirclePlus, Trash, ArrowLeft, Download, Share2 } from '@lucide/svelte';
 	import FileDropzone from '$lib/components/FileDropzone.svelte';
 	import DisplayMetadata from '$lib/components/DisplayMetadata.svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { onMount, tick } from 'svelte';
-	import { add } from 'dexie';
+	import { Filesystem, Directory } from '@capacitor/filesystem';
+	import { Share } from '@capacitor/share';
+	import { Capacitor } from '@capacitor/core';
 
 	onMount(async () => {
 		await loadStoredEpubs();
@@ -52,7 +54,47 @@
 	function changeToHtmlExtension(filename: string) {
 		return filename.replace(/\.[^/.]+$/, '') + '.html';
 	}
+	function changeToTxtExtension(filename: string) {
+		return filename.replace(/\.[^/.]+$/, '') + '.txt';
+	}
 
+	const shareNative = async () => {
+		showContextMenu = false;
+		const base64Data = await blobToBase64Modern(contextedEpub?.data!);
+
+		const result = await Filesystem.writeFile({
+			path: `${contextedEpub?.metadata.title!}.epub`,
+			data: base64Data,
+			directory: Directory.Cache // Use cache directory for temporary files
+		});
+
+		const fileUri = result.uri;
+
+		await Share.share({
+			title: 'Share EPUB Book',
+			text: 'Check out this book!',
+			files: [fileUri],
+			dialogTitle: 'Share Book'
+		});
+	};
+
+	async function blobToBase64Modern(blob: Blob) {
+		try {
+			// Convert blob to array buffer first
+			const arrayBuffer = await blob.arrayBuffer();
+			const uint8Array = new Uint8Array(arrayBuffer);
+
+			// Convert to base64 using btoa
+			let binary = '';
+			for (let i = 0; i < uint8Array.length; i++) {
+				binary += String.fromCharCode(uint8Array[i]);
+			}
+
+			return btoa(binary);
+		} catch (error: any) {
+			throw new Error('Failed to convert blob to base64: ' + error.message);
+		}
+	}
 	const shareBook = async () => {
 		showContextMenu = false;
 		const file = new File(
@@ -62,6 +104,43 @@
 				type: 'text/html'
 			}
 		);
+
+		try {
+			if (navigator.canShare({ files: [file] })) {
+				await navigator.share({
+					title: `Share ${contextedEpub?.metadata.title} to Kindle`,
+					files: [file],
+					text: 'Open with Kindle app to read this book!'
+				});
+			}
+		} catch (error) {}
+	};
+	const shareBookTxt = async () => {
+		showContextMenu = false;
+		const file = new File(
+			[contextedEpub?.data!],
+			changeToTxtExtension(contextedEpub?.metadata.title!),
+			{
+				type: 'text/plain'
+			}
+		);
+
+		try {
+			if (navigator.canShare({ files: [file] })) {
+				await navigator.share({
+					title: `Share ${contextedEpub?.metadata.title} to Kindle`,
+					files: [file],
+					text: 'Open with Kindle app to read this book!'
+				});
+			}
+		} catch (error) {}
+	};
+
+	const shareBookEpub = async () => {
+		showContextMenu = false;
+		const file = new File([contextedEpub?.data!], contextedEpub?.metadata.title! + '.epub', {
+			type: 'application/epub+zip'
+		});
 
 		try {
 			if (navigator.canShare({ files: [file] })) {
@@ -578,6 +657,29 @@
 						}}><Share2 /> Share(Will Work For Kindle App Only)</button
 					>
 				</li>
+				<li>
+					<button
+						onclick={() => {
+							shareBookTxt();
+						}}><Share2 /> Share(Mimicing it as txt file)</button
+					>
+				</li>
+				<li>
+					<button
+						onclick={() => {
+							shareBookEpub();
+						}}><Share2 /> Share(Supposed to work only in Safari)</button
+					>
+				</li>
+			{/if}
+			{#if Capacitor.isNativePlatform()}
+				<li>
+					<button
+						onclick={() => {
+							shareNative();
+						}}><Share2 /> Share</button
+					>
+				</li>
 			{/if}
 		</ul>
 	</div>
@@ -595,7 +697,7 @@
 	</div>
 </dialog>
 
-<div class="flex h-full w-full flex-col lg:flex-row">
+<div class="flex h-full w-full flex-col overflow-auto lg:flex-row">
 	<!-- EPUB List Section -->
 	<div class="flex w-full min-w-min flex-col lg:w-1/3 {showMetadata ? 'hidden lg:flex' : 'flex'}">
 		<div class="flex w-full flex-col gap-2 p-3 sm:flex-row sm:gap-4 sm:p-5">
