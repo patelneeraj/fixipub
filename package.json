@@ -14,14 +14,12 @@
 		"lint": "prettier --check ."
 	},
 	"devDependencies": {
-		"@capacitor/cli": "^7.2.0",
 		"@sveltejs/adapter-auto": "^6.0.0",
 		"@sveltejs/kit": "^2.16.0",
 		"@sveltejs/vite-plugin-svelte": "^5.0.0",
 		"@tailwindcss/forms": "^0.5.9",
 		"@tailwindcss/typography": "^0.5.15",
 		"@tailwindcss/vite": "^4.1.7",
-		"@tauri-apps/cli": "^2.5.0",
 		"prettier": "^3.4.2",
 		"prettier-plugin-svelte": "^3.3.3",
 		"prettier-plugin-tailwindcss": "^0.6.11",
@@ -38,11 +36,6 @@
 	},
 	"packageManager": "pnpm@10.11.0+sha512.6540583f41cc5f628eb3d9773ecee802f4f9ef9923cc45b69890fb47991d4b092964694ec3a4f738a420c918a333062c8b925d312f42e4f0c263eb603551f977",
 	"dependencies": {
-		"@capacitor/android": "^7.2.0",
-		"@capacitor/core": "^7.2.0",
-		"@capacitor/filesystem": "^7.1.1",
-		"@capacitor/share": "^7.0.1",
-		"@capacitor/status-bar": "^7.0.1",
 		"@fontsource/inter": "^5.2.5",
 		"@lucide/svelte": "^0.511.0",
 		"@sveltejs/adapter-static": "^3.0.8",
